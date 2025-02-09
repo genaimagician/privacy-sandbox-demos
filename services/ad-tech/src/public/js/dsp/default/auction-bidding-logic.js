@@ -28,6 +28,33 @@
 // ********************************************************
 CURR_HOST = '';
 AUCTION_ID = '';
+
+//One hour display limit
+const ONE_HOUR_MS = 3600000;
+const MAX_IMPRESSIONS_PER_HOUR_PER_AD = 1;
+
+//Seven hour display limit - no more than 20 in 7 hours
+const SEVEN_HOURS_MS = 7 * ONE_HOUR_MS;
+const MAX_IMPRESSIONS_PER_SEVEN_HOURS_PER_AD = 1;
+
+function shouldShowAd(prevWinsMs, currentAd) { // currentAd is the ad we're considering showing
+  if (!prevWinsMs || !currentAd) {
+      return true; // No previous wins or no current ad, so show the ad
+  }
+
+  const recentWinsForCurrentAdOneHour = prevWinsMs.filter(([timeDeltaMs, ad]) => {
+      return timeDeltaMs <= ONE_HOUR_MS && ad.renderURL === currentAd.renderURL; // Filter by time and ad renderURL
+  });
+
+  const recentWinsForCurrentAdSevenHours = prevWinsMs.filter(([timeDeltaMs, ad]) => {
+      return timeDeltaMs <= SEVEN_HOURS_MS && ad.renderURL === currentAd.renderURL;
+  });
+
+  return recentWinsForCurrentAdOneHour.length < MAX_IMPRESSIONS_PER_HOUR_PER_AD &&
+         recentWinsForCurrentAdSevenHours.length < MAX_IMPRESSIONS_PER_SEVEN_HOURS_PER_AD;
+}
+
+
 /** Logs to console. */
 function log(message, context) {
   console.log(
@@ -152,8 +179,17 @@ function getBidForVideoAd({
   const {ads} = interestGroup;
   // Select an ad meeting the auction requirements.
   const [selectedAd] = ads.filter((ad) => 'VIDEO' === ad.metadata.adType);
+
+   //mock data to test shouldShowAd's function
+  //  browserSignals.prevWinsMs = [
+  //   [30 * 60 * 1000, { renderURL: "https://privacy-sandbox-demos-dsp-b.dev/ads/display-ads?advertiser=privacy-sandbox-demos-shop.dev", metadata: { campaignId: "campaign1" } }] // 30 mins ago
+  // ];
+
   if (!selectedAd) {
     log('didnt find eligible video ad in IG', {interestGroup, browserSignals});
+    return {bid: '0.0'};
+  } else if (!shouldShowAd(browserSignals.prevWinsMs, selectedAd)) {
+    log('frequency capping', {interestGroup, browserSignals});
     return {bid: '0.0'};
   }
   // Check if any deals are eligible.
@@ -193,8 +229,17 @@ function getBidForDisplayAd({
   const [selectedAd] = interestGroup.ads.filter(
     (ad) => 'DISPLAY' === ad.metadata.adType,
   );
+
+  //mock data to test shouldShowAd's function
+  // browserSignals.prevWinsMs = [
+  //   [30 * 60 * 1000, { renderURL: "https://privacy-sandbox-demos-dsp-b.dev/ads/display-ads?advertiser=privacy-sandbox-demos-shop.dev", metadata: { campaignId: "campaign1" } }] // 30 mins ago
+  // ];
+
   if (!selectedAd) {
     log("can't select display ad, no matching ad type found", {interestGroup});
+    return {bid: '0.0'};
+  } else if (!shouldShowAd(browserSignals.prevWinsMs, selectedAd)) {
+    log('frequency capping', {interestGroup, browserSignals});
     return {bid: '0.0'};
   }
   // Check if any deals are eligible.
@@ -254,6 +299,7 @@ function generateBid(
     browserSignals,
   };
   logContextForDemo('generateBid()', biddingContext);
+
   if (!isCurrentCampaignActive(biddingContext)) {
     log('not bidding as campaign is inactive', biddingContext);
     return;
@@ -296,6 +342,7 @@ function reportWin(
     bidCurrency: browserSignals.bidCurrency,
     buyerReportingId: browserSignals.buyerReportingId,
     buyerAndSellerReportingId: browserSignals.buyerAndSellerReportingId,
+    prevWinsMs: browserSignals.prevWinsMs,
     selectedBuyerAndSellerReportingId:
       browserSignals.selectedBuyerAndSellerReportingId,
   };
