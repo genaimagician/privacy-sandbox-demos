@@ -28,14 +28,14 @@
 // ********************************************************
 CURR_HOST = '';
 AUCTION_ID = '';
-
-//One hour display limit
+FALLBACK_ITEM_ID = '1f937';
+//One hour display limit -> TODO: change it to 1 min for demo purpose
 const ONE_HOUR_MS = 3600000;
 const MAX_IMPRESSIONS_PER_HOUR_PER_AD = 1;
 
-//Seven hour display limit - no more than 20 in 7 hours
+//Seven hour display limit -> TODO: change it to 2 min for demo purpose
 const SEVEN_HOURS_MS = 7 * ONE_HOUR_MS;
-const MAX_IMPRESSIONS_PER_SEVEN_HOURS_PER_AD = 1;
+const MAX_IMPRESSIONS_PER_SEVEN_HOURS_PER_AD = 2;
 
 function shouldShowAd(prevWinsMs, currentAd) { // currentAd is the ad we're considering showing
   if (!prevWinsMs || !currentAd) {
@@ -180,18 +180,10 @@ function getBidForVideoAd({
   // Select an ad meeting the auction requirements.
   const [selectedAd] = ads.filter((ad) => 'VIDEO' === ad.metadata.adType);
 
-   //mock data to test shouldShowAd's function
-  //  browserSignals.prevWinsMs = [
-  //   [30 * 60 * 1000, { renderURL: "https://privacy-sandbox-demos-dsp-b.dev/ads/display-ads?advertiser=privacy-sandbox-demos-shop.dev", metadata: { campaignId: "campaign1" } }] // 30 mins ago
-  // ];
-
   if (!selectedAd) {
     log('didnt find eligible video ad in IG', {interestGroup, browserSignals});
     return {bid: '0.0'};
-  } else if (!shouldShowAd(browserSignals.prevWinsMs, selectedAd)) {
-    log('frequency capping', {interestGroup, browserSignals});
-    return {bid: '0.0'};
-  }
+  } 
   // Check if any deals are eligible.
   const dealId = selectDealId(selectedAd, auctionSignals);
   return {
@@ -231,19 +223,40 @@ function getBidForDisplayAd({
   );
 
   //mock data to test shouldShowAd's function
-  // browserSignals.prevWinsMs = [
-  //   [30 * 60 * 1000, { renderURL: "https://privacy-sandbox-demos-dsp-b.dev/ads/display-ads?advertiser=privacy-sandbox-demos-shop.dev", metadata: { campaignId: "campaign1" } }] // 30 mins ago
-  // ];
+  browserSignals.prevWinsMs = [
+    [30 * 60 * 1000, { renderURL: "https://privacy-sandbox-demos-dsp-b.dev/ads/display-ads?advertiser=privacy-sandbox-demos-shop.dev", metadata: { campaignId: "campaign1" } }] // 30 mins ago
+  ];
 
   if (!selectedAd) {
     log("can't select display ad, no matching ad type found", {interestGroup});
     return {bid: '0.0'};
   } else if (!shouldShowAd(browserSignals.prevWinsMs, selectedAd)) {
-    log('frequency capping', {interestGroup, browserSignals});
-    return {bid: '0.0'};
+    //log('frequency capping', {interestGroup, browserSignals});
+    //return {bid: '0.0'};
+    log('Frequency capping hit, switching to fallback ad', { interestGroup, browserSignals, fallbackItemId: FALLBACK_ITEM_ID });
+    // Instead of returning {bid: 0}, set the newItemId to the fallback
+    newItemId = FALLBACK_ITEM_ID;
   }
   // Check if any deals are eligible.
   const dealId = selectDealId(selectedAd, auctionSignals);
+
+  let finalRenderUrl = selectedAd.renderURL; // Start with the original URL
+
+  // Modify the URL if newItemId was set (either by fallback or other logic)
+  if (newItemId) {
+    try {
+      const urlObject = new URL(selectedAd.renderURL);
+      urlObject.searchParams.set('itemId', newItemId); // Set/replace itemId
+      finalRenderUrl = urlObject.toString();
+      log('Modified renderURL with new itemId', { oldUrl: selectedAd.renderURL, newUrl: finalRenderUrl, newItemId });
+    } catch (e) {
+      log('Error modifying renderURL', { error: e, originalUrl: selectedAd.renderURL });
+      // Decide fallback behavior: keep original URL or potentially return 0 bid if modification is critical
+      // Keeping original URL for now:
+      finalRenderUrl = selectedAd.renderURL;
+    }
+  }
+
   return {
     ad: {
       ...selectedAd.metadata,
@@ -254,7 +267,7 @@ function getBidForDisplayAd({
     bidCurrency: 'USD',
     allowComponentAuction: true,
     render: {
-      url: selectedAd.renderURL,
+      url: finalRenderUrl,
       // Specify ad size for macro replacements.
       width: selectedAd.metadata.adSizes[0].width,
       height: selectedAd.metadata.adSizes[0].height,
