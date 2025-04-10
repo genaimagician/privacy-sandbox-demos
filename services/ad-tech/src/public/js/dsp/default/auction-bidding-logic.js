@@ -28,30 +28,29 @@
 // ********************************************************
 CURR_HOST = '';
 AUCTION_ID = '';
-FALLBACK_ITEM_ID = '1f937';
-//One hour display limit -> TODO: change it to 1 min for demo purpose
-const ONE_HOUR_MS = 3600000;
-const MAX_IMPRESSIONS_PER_HOUR_PER_AD = 1;
+// One minute display limit for demo purpose
+const ONE_MINUTE_MS = 60 * 1000; // 60 seconds * 1000 ms/sec
+const MAX_IMPRESSIONS_PER_MINUTE_PER_AD = 1;
 
-//Seven hour display limit -> TODO: change it to 2 min for demo purpose
-const SEVEN_HOURS_MS = 7 * ONE_HOUR_MS;
-const MAX_IMPRESSIONS_PER_SEVEN_HOURS_PER_AD = 2;
+// Two minute display limit for demo purpose
+const TWO_MINUTES_MS = 2 * 60 * 1000; // 2 minutes * 60 seconds/min * 1000 ms/sec
+const MAX_IMPRESSIONS_PER_TWO_MINUTES_PER_AD = 2;
 
 function shouldShowAd(prevWinsMs, currentAd) { // currentAd is the ad we're considering showing
   if (!prevWinsMs || !currentAd) {
       return true; // No previous wins or no current ad, so show the ad
   }
 
-  const recentWinsForCurrentAdOneHour = prevWinsMs.filter(([timeDeltaMs, ad]) => {
-      return timeDeltaMs <= ONE_HOUR_MS && ad.renderURL === currentAd.renderURL; // Filter by time and ad renderURL
+  const recentWinsForCurrentAdOneMin = prevWinsMs.filter(([timeDeltaMs, ad]) => {
+      return timeDeltaMs <= ONE_MINUTE_MS && ad.renderURL === currentAd.renderURL; // Filter by time and ad renderURL
   });
 
-  const recentWinsForCurrentAdSevenHours = prevWinsMs.filter(([timeDeltaMs, ad]) => {
-      return timeDeltaMs <= SEVEN_HOURS_MS && ad.renderURL === currentAd.renderURL;
+  const recentWinsForCurrentAdTwoMins = prevWinsMs.filter(([timeDeltaMs, ad]) => {
+      return timeDeltaMs <= TWO_MINUTES_MS && ad.renderURL === currentAd.renderURL;
   });
 
-  return recentWinsForCurrentAdOneHour.length < MAX_IMPRESSIONS_PER_HOUR_PER_AD &&
-         recentWinsForCurrentAdSevenHours.length < MAX_IMPRESSIONS_PER_SEVEN_HOURS_PER_AD;
+  return recentWinsForCurrentAdOneMin.length < MAX_IMPRESSIONS_PER_MINUTE_PER_AD &&
+  recentWinsForCurrentAdTwoMins.length < MAX_IMPRESSIONS_PER_TWO_MINUTES_PER_AD;
 }
 
 
@@ -218,44 +217,27 @@ function getBidForDisplayAd({
   browserSignals,
 }) {
   // Select an ad meeting the auction requirements.
-  const [selectedAd] = interestGroup.ads.filter(
+  let [selectedAd] = interestGroup.ads.filter(
     (ad) => 'DISPLAY' === ad.metadata.adType,
   );
 
-  //mock data to test shouldShowAd's function
-  browserSignals.prevWinsMs = [
-    [30 * 60 * 1000, { renderURL: "https://privacy-sandbox-demos-dsp-b.dev/ads/display-ads?advertiser=privacy-sandbox-demos-shop.dev", metadata: { campaignId: "campaign1" } }] // 30 mins ago
-  ];
+  // Mock data to test shouldShowAd's function
+  //  browserSignals.prevWinsMs = [
+  //   [30 * 1000, { renderURL: "https://privacy-sandbox-demos-dsp-b.dev/ads/display-ads?advertiser=privacy-sandbox-demos-shop.dev", metadata: { campaignId: "campaign1" } }] // 30 seconds ago
+  // ];
 
   if (!selectedAd) {
-    log("can't select display ad, no matching ad type found", {interestGroup});
+    log('didnt find eligible video ad in IG', {interestGroup, browserSignals});
     return {bid: '0.0'};
-  } else if (!shouldShowAd(browserSignals.prevWinsMs, selectedAd)) {
-    //log('frequency capping', {interestGroup, browserSignals});
-    //return {bid: '0.0'};
-    log('Frequency capping hit, switching to fallback ad', { interestGroup, browserSignals, fallbackItemId: FALLBACK_ITEM_ID });
-    // Instead of returning {bid: 0}, set the newItemId to the fallback
-    newItemId = FALLBACK_ITEM_ID;
+  } else if (!shouldShowAd(browserSignals.prevWinsMs, selectedAd)) { 
+    log('frequency capping', {interestGroup, browserSignals});
+    [selectedAd] = interestGroup.ads.filter(
+      (ad) => 'DEFAULT' === ad.metadata.adType,
+    );
   }
+
   // Check if any deals are eligible.
   const dealId = selectDealId(selectedAd, auctionSignals);
-
-  let finalRenderUrl = selectedAd.renderURL; // Start with the original URL
-
-  // Modify the URL if newItemId was set (either by fallback or other logic)
-  if (newItemId) {
-    try {
-      const urlObject = new URL(selectedAd.renderURL);
-      urlObject.searchParams.set('itemId', newItemId); // Set/replace itemId
-      finalRenderUrl = urlObject.toString();
-      log('Modified renderURL with new itemId', { oldUrl: selectedAd.renderURL, newUrl: finalRenderUrl, newItemId });
-    } catch (e) {
-      log('Error modifying renderURL', { error: e, originalUrl: selectedAd.renderURL });
-      // Decide fallback behavior: keep original URL or potentially return 0 bid if modification is critical
-      // Keeping original URL for now:
-      finalRenderUrl = selectedAd.renderURL;
-    }
-  }
 
   return {
     ad: {
@@ -267,7 +249,7 @@ function getBidForDisplayAd({
     bidCurrency: 'USD',
     allowComponentAuction: true,
     render: {
-      url: finalRenderUrl,
+      url: selectedAd.renderURL, //TODO: finalRenderUrl
       // Specify ad size for macro replacements.
       width: selectedAd.metadata.adSizes[0].width,
       height: selectedAd.metadata.adSizes[0].height,

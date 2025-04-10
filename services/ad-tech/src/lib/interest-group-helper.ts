@@ -30,6 +30,7 @@ export enum AdType {
   DISPLAY = 'DISPLAY',
   VIDEO = 'VIDEO',
   MULTIPIECE = 'MULTIPIECE',
+  DEFAULT = 'DEFAULT',
 }
 
 export enum AuctionServerRequestFlags {
@@ -172,6 +173,35 @@ const getDisplayAdForRequest = (
     sizeGroup: 'medium-rectangle',
     buyerReportingId: 'buyerSpecificInfo1',
     buyerAndSellerReportingId: 'seatid-1234',
+  };
+  if (targetingContext.isUpdateRequest) {
+    // Only include deal IDs in update requests.
+    ad.selectableBuyerAndSellerReportingIds = ['deal-1', 'deal-2', 'deal-3'];
+  }
+  return ad;
+};
+
+/** Returns the interest group default display ad to for the given advertiser when frequenc cap is met. */
+const getDefaultDisplayAdForRequest = (
+  targetingContext: TargetingContext,
+): InterestGroupAd => {
+  const {advertiser} = targetingContext;
+  const renderUrl = new URL(
+    `https://${HOSTNAME}:${EXTERNAL_PORT}/ads/display-ads`,
+  );
+  renderUrl.searchParams.append('advertiser', advertiser);
+  renderUrl.searchParams.append('itemId', '1f937');
+  
+  const ad: InterestGroupAd = {
+    renderURL: `${renderUrl.toString()}&${MACRO_DISPLAY_RENDER_URL_AD_SIZE}`,
+    metadata: {
+      advertiser,
+      adType: AdType.DEFAULT,
+      adSizes: [{width: '300px', height: '250px'}],
+    },
+    sizeGroup: 'medium-rectangle',
+    buyerReportingId: 'buyerSpecificInfo0',
+    buyerAndSellerReportingId: 'seatid-000',
   };
   if (targetingContext.isUpdateRequest) {
     // Only include deal IDs in update requests.
@@ -327,6 +357,7 @@ export const getInterestGroup = (
     userBiddingSignals,
     ads: [
       getDisplayAdForRequest(targetingContext),
+      getDefaultDisplayAdForRequest(targetingContext),
       getVideoAdForRequest(targetingContext),
       getMultiPieceAdForRequest(targetingContext),
     ],
