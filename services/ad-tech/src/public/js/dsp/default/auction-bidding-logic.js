@@ -227,7 +227,7 @@ function getBidForDisplayAd({
   // ];
 
   if (!selectedAd) {
-    log('didnt find eligible video ad in IG', {interestGroup, browserSignals});
+    log("can't select display ad, no matching ad type found", {interestGroup});
     return {bid: '0.0'};
   } else if (!shouldShowAd(browserSignals.prevWinsMs, selectedAd)) { 
     log('frequency capping', {interestGroup, browserSignals});
@@ -249,7 +249,7 @@ function getBidForDisplayAd({
     bidCurrency: 'USD',
     allowComponentAuction: true,
     render: {
-      url: selectedAd.renderURL, //TODO: finalRenderUrl
+      url: selectedAd.renderURL, 
       // Specify ad size for macro replacements.
       width: selectedAd.metadata.adSizes[0].width,
       height: selectedAd.metadata.adSizes[0].height,
